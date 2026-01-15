@@ -5,17 +5,69 @@ const { recalculateETA } = require("../services/eta.service");
  * CREATE BOOKING
  * Rule: One ACTIVE (PENDING) booking per phone
  */
+const SLOT_MINUTES = 120;
+const BOOKING_MINUTES = 30;
+
+/* ---------- SLOT PARSER ---------- */
+function parseSlot(date, timeSlot) {
+  const [start, end] = timeSlot.replace("–", "-").split("-");
+
+  const format = (t) =>
+    t.includes(":") ? t : t.replace(/(AM|PM)/, ":00 $1");
+
+  const startTime = new Date(`${date} ${format(start.trim())}`);
+  const endTime = new Date(`${date} ${format(end.trim())}`);
+
+  return { startTime, endTime };
+}
+
+/* ---------- CAPACITY CALCULATOR ---------- */
+function getAllowedBookings(date, timeSlot) {
+  const { startTime, endTime } = parseSlot(date, timeSlot);
+  const now = new Date();
+
+  // Slot already over
+  if (now >= endTime) return 0;
+
+  const effectiveStart = now > startTime ? now : startTime;
+  const remainingMinutes = Math.floor(
+    (endTime - effectiveStart) / 60000
+  );
+
+  return Math.floor(remainingMinutes / BOOKING_MINUTES);
+}
+
+/* ---------- CREATE BOOKING ---------- */
 exports.createBooking = async (req, res) => {
   try {
+    const { date, timeSlot } = req.body;
+
+    /* 🔒 NEW RULE: SLOT CAPACITY CHECK */
+    const allowed = getAllowedBookings(date, timeSlot);
+
+    const existingCount = await Booking.countDocuments({
+      date,
+      timeSlot,
+      status: { $in: ["PENDING", "IN_SERVICE"] },
+    });
+
+    if (existingCount >= allowed) {
+      return res.status(400).json({
+        message: "Slot is full or time window has passed",
+      });
+    }
+
+    /* ✅ ORIGINAL LOGIC (UNCHANGED) */
     const booking = await Booking.create({
       ...req.body,
       userId: req.user.id,
       status: "PENDING",
     });
 
-    // 🔥 ETA failure must NOT fail booking
-    recalculateETA(booking.date, booking.timeSlot)
-      .catch(err => console.error("ETA error:", err.message));
+    /* 🔥 ETA failure must NOT fail booking (UNCHANGED) */
+    recalculateETA(booking.date, booking.timeSlot).catch((err) =>
+      console.error("ETA error:", err.message)
+    );
 
     res.status(201).json(booking);
   } catch (err) {

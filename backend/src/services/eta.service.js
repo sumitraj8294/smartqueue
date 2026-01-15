@@ -23,13 +23,18 @@ exports.recalculateETA = async (date, timeSlot) => {
     status: "PENDING",
   }).sort({ createdAt: 1 });
 
-  let nextTime = parseSlotStart(date, timeSlot);
+  const slotStart = parseSlotStart(date, timeSlot);
+  const now = new Date();
+
+  // ✅ START FROM CURRENT TIME IF SLOT ALREADY STARTED
+  let nextTime = now > slotStart ? now : slotStart;
 
   for (const b of pending) {
     await Booking.findByIdAndUpdate(b._id, { etaTime: nextTime });
     nextTime = new Date(nextTime.getTime() + SERVICE_MIN * 60000);
   }
 };
+
 
 /* ---------- EARLY COMPLETION (BUFFER LOGIC) ---------- */
 exports.recalculateETAAfterCompletion = async (completed) => {
@@ -45,7 +50,7 @@ exports.recalculateETAAfterCompletion = async (completed) => {
 
   const now = new Date();
 
-  // ✅ RULE: next user always starts AFTER buffer
+  // RULE: next user always starts AFTER buffer
   const nextETA = new Date(now.getTime() + BUFFER_MIN * 60000);
 
   // update first pending booking

@@ -7,6 +7,9 @@ import {
   ScrollView,
 } from "react-native";
 import { useState } from "react";
+import DateTimePicker from "@react-native-community/datetimepicker";
+
+
 import { createBooking } from "../../services/bookingService";
 import { SLOTS } from "../../constants/slots";
 import { router } from "expo-router";
@@ -21,6 +24,37 @@ export default function Book() {
     date: "",
     timeSlot: "",
   });
+
+  /* ================= NEW STATES ================= */
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  /* ================= HELPERS ================= */
+
+  const isPastSlot = (slot: string) => {
+    if (!form.date) return false;
+
+    const selectedDate = new Date(form.date);
+    const now = new Date();
+
+    // Not today → allow
+    if (selectedDate.toDateString() !== now.toDateString()) return false;
+
+    const start = slot.replace("–", "-").split("-")[0].trim();
+    const formatted = start.includes(":")
+      ? start
+      : start.replace(/(AM|PM)/, ":00 $1");
+
+    const slotStart = new Date(
+      `${form.date} ${formatted}`
+    );
+
+    return now >= slotStart;
+  };
+
+  /* ================= SUBMIT ================= */
 
   const submit = async () => {
     if (
@@ -41,6 +75,8 @@ export default function Book() {
       alert(e.response?.data?.message || "Booking failed");
     }
   };
+
+  /* ================= UI ================= */
 
   return (
     <View style={styles.container}>
@@ -105,37 +141,70 @@ export default function Book() {
           ))}
         </View>
 
-        {/* DATE */}
+        {/* DATE PICKER */}
         <Text style={styles.label}>Date</Text>
-        <TextInput
+        <TouchableOpacity
           style={styles.input}
-          placeholder="YYYY-MM-DD"
-          value={form.date}
-          onChangeText={(v) => setForm({ ...form, date: v })}
-        />
+          onPress={() => setShowDatePicker(true)}
+        >
+          <Text>
+            {form.date || "Select date"}
+          </Text>
+        </TouchableOpacity>
+
+        {showDatePicker && (
+          <DateTimePicker
+            value={today}
+            mode="date"
+            minimumDate={today}
+            onChange={(e, selected) => {
+              setShowDatePicker(false);
+              if (selected) {
+                const yyyy = selected.getFullYear();
+                const mm = String(selected.getMonth() + 1).padStart(2, "0");
+                const dd = String(selected.getDate()).padStart(2, "0");
+
+                setForm({
+                  ...form,
+                  date: `${yyyy}-${mm}-${dd}`,
+                  timeSlot: "",
+                });
+              }
+            }}
+          />
+        )}
 
         {/* TIME SLOT */}
         <Text style={styles.label}>Select Time Slot</Text>
         <View style={styles.row}>
-          {SLOTS.map((slot) => (
-            <TouchableOpacity
-              key={slot}
-              style={[
-                styles.slot,
-                form.timeSlot === slot && styles.slotActive,
-              ]}
-              onPress={() => setForm({ ...form, timeSlot: slot })}
-            >
-              <Text
+          {SLOTS.map((slot) => {
+            const disabled = isPastSlot(slot);
+
+            return (
+              <TouchableOpacity
+                key={slot}
+                disabled={disabled}
                 style={[
-                  styles.slotText,
-                  form.timeSlot === slot && styles.slotTextActive,
+                  styles.slot,
+                  form.timeSlot === slot && styles.slotActive,
+                  disabled && styles.slotDisabled,
                 ]}
+                onPress={() =>
+                  setForm({ ...form, timeSlot: slot })
+                }
               >
-                {slot}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <Text
+                  style={[
+                    styles.slotText,
+                    form.timeSlot === slot && styles.slotTextActive,
+                    disabled && styles.slotTextDisabled,
+                  ]}
+                >
+                  {slot}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         {/* SUBMIT */}
@@ -144,9 +213,10 @@ export default function Book() {
         </TouchableOpacity>
       </ScrollView>
     </View>
-    
   );
 }
+
+/* ================= STYLES ================= */
 
 const styles = StyleSheet.create({
   container: {
@@ -154,7 +224,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#f5f6fa",
   },
 
-  /* HEADER */
   header: {
     backgroundColor: COLORS.PRIMARY,
     padding: 18,
@@ -166,7 +235,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  /* FORM */
   form: {
     padding: 20,
     paddingBottom: 40,
@@ -187,12 +255,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
 
-  /* CHIPS */
   row: {
     flexDirection: "row",
     flexWrap: "wrap",
     marginBottom: 15,
   },
+
   chip: {
     borderWidth: 1,
     borderColor: COLORS.PRIMARY,
@@ -214,7 +282,6 @@ const styles = StyleSheet.create({
     color: "#fff",
   },
 
-  /* SLOTS */
   slot: {
     borderWidth: 1,
     borderColor: COLORS.SECONDARY,
@@ -227,6 +294,9 @@ const styles = StyleSheet.create({
   slotActive: {
     backgroundColor: COLORS.SECONDARY,
   },
+  slotDisabled: {
+    opacity: 0.4,
+  },
   slotText: {
     fontSize: 13,
     color: COLORS.SECONDARY,
@@ -235,8 +305,10 @@ const styles = StyleSheet.create({
   slotTextActive: {
     color: "#fff",
   },
+  slotTextDisabled: {
+    color: "#999",
+  },
 
-  /* BUTTON */
   button: {
     backgroundColor: COLORS.SUCCESS,
     padding: 16,
